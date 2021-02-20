@@ -5,7 +5,7 @@ import cats.effect.laws.discipline.arbitrary._
 import cats.effect.laws.discipline.{ ConcurrentEffectTests, ConcurrentTests, EffectTests, SyncTests }
 import cats.effect.laws._
 import cats.effect.{ Concurrent, ConcurrentEffect, ContextShift, Effect }
-import cats.implicits._
+import cats.instances.all._
 import cats.laws._
 import cats.laws.discipline._
 import cats.{ Monad, SemigroupK }
@@ -46,13 +46,17 @@ class catzSpec extends catzSpecZIOBase {
   checkAllAsync("SemigroupK[ZManaged]", implicit tc => SemigroupKTests[ZManaged[Any, Throwable, *]].semigroupK[Int])
   checkAllAsync(
     "ArrowChoice[ZManaged]",
-    implicit tc => ArrowChoiceTests[ZManaged[*, Int, *]].arrowChoice[Int, Int, Int, Int, Int, Int]
+    implicit tc => {
+      import polyZManaged._
+      import polyZManagedArb._
+      ArrowChoiceTests[ZManaged[*, Int, *]].arrowChoice[Int, Int, Int, Int, Int, Int]
+    }
   )
   checkAllAsync(
     "MonadError[ZManaged]",
-    implicit tc => MonadErrorTests[ZManaged[Any, Int, *], Int].monadError[Int, Int, Int]
+    implicit tc => MonadErrorTests[Managed[Int, *], Int].monadError[Int, Int, Int]
   )
-  checkAllAsync("Sync[ZManaged]", implicit tc => SyncTests[ZManaged[Any, Throwable, *]].sync[Int, Int, Int])
+  checkAllAsync("Sync[ZManaged]", implicit tc => SyncTests[Managed[Throwable, *]].sync[Int, Int, Int])
 
   object summoningInstancesTest {
     import cats._
@@ -99,6 +103,7 @@ class catzSpec extends catzSpecZIOBase {
 
   object concurrentEffectSyntaxTest {
     import cats.effect.syntax.all._
+    import cats.instances.list._
 
     Task.concurrentEffectWith { implicit CE =>
       Task(List(1, 2).parTraverseN(5L) { _ =>
@@ -108,6 +113,8 @@ class catzSpec extends catzSpecZIOBase {
   }
 
   object syntaxTest {
+    import cats.syntax.profunctor._
+
     def rioDimap(rio: RIO[Int, String]): RIO[String, Int]      = rio.dimap[String, Int](_.length)(_.length)
     def rioBimap(rio: RIO[Int, String]): ZIO[Int, String, Int] = rio.bimap(_.getMessage, _.length)
     def urioDimap(rio: URIO[Int, String]): URIO[String, Int]   = rio.dimap[String, Int](_.length)(_.length)
@@ -116,6 +123,10 @@ class catzSpec extends catzSpecZIOBase {
 
 trait AsyncLawsOverrides[F[_]] extends AsyncLaws[F] {
   import cats.effect.ExitCase.{ Completed, Error }
+  import cats.syntax.apply._
+  import cats.syntax.functor._
+  import cats.syntax.applicativeError._
+  import cats.syntax.flatMap._
 
   override def bracketReleaseIsCalledOnCompletedOrError[A, B](fa: F[A], b: B) = {
     val lh = Deferred.uncancelable[F, B].flatMap { promise =>
